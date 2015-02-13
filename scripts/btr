@@ -1,0 +1,28 @@
+#!/bin/sh
+
+usage()
+{
+  echo 'btr <target> <sln.name> [<property=value> ...]'
+}
+
+if [ "$1" == "" -o "$2" == "" ]
+then
+  usage
+  exit 1
+fi
+
+SLN_NAME=${2%/}
+
+CMD="nant /f:BuildScripts/app.build $1 -D:sln.name=$SLN_NAME"
+
+while [ "$3" != "" ]
+do
+  CMD="$CMD -D:$3"
+  shift
+done
+
+echo $CMD
+
+$CMD
+
+

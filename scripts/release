@@ -1,0 +1,33 @@
+#!/bin/sh
+
+usage()
+{
+  echo 'release <sln.name> [<releases.dir>] [property=value ...]'
+}
+
+if [ "$1" == "" ]
+then
+  usage
+  exit 1
+fi
+
+SLN_NAME=${1%/}
+
+CMD="nant /f:BuildScripts/app.build release -D:sln.name=$SLN_NAME"
+
+
+if [ "$2" != "" ]
+then
+  CMD="$CMD -D:releases.dir=$2"
+fi
+
+while [ "$3" != "" ]
+do
+  CMD="$CMD -D:$3"
+  shift
+done
+
+echo $CMD
+
+$CMD
+

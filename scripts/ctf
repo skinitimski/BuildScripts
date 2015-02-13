@@ -1,0 +1,68 @@
+#!/bin/sh
+
+usage()
+{
+  echo 'ctf <sln.name>'
+}
+
+if [ "$1" == "" ]
+then
+  usage
+  exit 1
+fi
+
+if [ ! -d $1 ]
+then
+  echo "Solution directory doesn't exist: $1"
+  exit 2
+fi
+
+if [ ! -f $1/$1.sln ]
+then 
+  echo "Solution file doesn't exist: $1/$1.sln"
+  exit 3
+fi
+
+
+MONO_DIR=`pwd`
+
+
+# Push template files if they don't already exist
+
+cp -nv $MONO_DIR/BuildScripts/templates/\${sln.name}.properties $1/$1.properties
+
+cp -nv $MONO_DIR/BuildScripts/templates/version.properties $1
+
+cp -nv $MONO_DIR/BuildScripts/templates/README.txt $1/README.txt
+
+cp -nv $MONO_DIR/BuildScripts/templates/\${sln.name}.Debug.nunit $1/$1.Debug.nunit
+
+cp -nv $MONO_DIR/BuildScripts/templates/\${sln.name}.Release.nunit $1/$1.Release.nunit
+
+
+# Iterate over folders; find projects, push project.properties if doesn't already exist
+
+pushd $1 > /dev/null
+
+for proj in $(find . -mindepth 1 -maxdepth 1 -type d)
+do
+  pushd $proj > /dev/null
+
+  if [ -f $proj.csproj ]
+  then
+
+    echo "Project: $proj"
+
+    # push project.properties
+    cp -nv $MONO_DIR/BuildScripts/templates/project.properties .
+
+    mkdir -pv Properties
+
+  fi
+
+  popd > /dev/null
+
+done
+
+popd > /dev/null
+

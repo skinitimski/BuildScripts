@@ -1,0 +1,28 @@
+#!/bin/sh
+
+usage()
+{
+  echo 'dist <sln.name> [property=value ...]'
+}
+
+if [ "$1" == "" ]
+then
+  usage
+  exit 1
+fi
+
+SLN_NAME=${1%/}
+
+CMD="nant /f:BuildScripts/app.build dist -D:sln.name=$SLN_NAME"
+
+
+while [ "$2" != "" ]
+do
+  CMD="$CMD -D:$2"
+  shift
+done
+
+echo $CMD
+
+$CMD
+
