@@ -1,0 +1,224 @@
+<?xml version="1.0"?>
+<project name="master-build" basedir=".." default="help">
+
+  <script language="C#" prefix="ep" >
+    <code>
+      <![CDATA[
+      [Function("substring-from-last-char")]
+      public static string SubstringFromChar(string input, char ch)
+      {
+      //add 1 to skip the char itself
+      int index = input.LastIndexOf(ch) + 1;
+      if (index > 0)
+      return input.Substring(index, input.Length - index);
+      else
+      return null;
+      }
+      ]]>
+    </code>
+  </script>
+  <script language="C#" prefix="ep" >
+    <code>
+      <![CDATA[
+      [Function("substring-to-last-char")]
+      public static string SubstringToChar(string input, char ch)
+      {
+      //add 1 to skip the char itself
+      int index = input.LastIndexOf(ch);
+      if (index > 0)
+      return input.Substring(0, index);
+      else
+      return null;
+      }
+      ]]>
+    </code>
+  </script>
+
+
+
+  <!--
+  init: load external tasks
+  -->
+  <target 
+    name="init" 
+    description=" [internal] Loads nant property file and external tasks."
+    unless="${property::exists('sln.initialized')}" >
+
+    <loadtasks assembly="BuildScripts/lib/XmlListTask.dll" />
+    <property name="sln.initialized" value="true" />
+  </target>
+
+
+
+  <!--
+  help: help screen
+  -->
+  <target name="help" description="Additional information about this script. Includes usage.">
+    <echo/>
+    <echo>Usage:</echo>
+    <echo/>
+    <echo> nant -buildfile:app.build clean</echo>
+    <echo/>
+    <echo/>
+    <echo>    Relevant target descriptions:</echo>
+    <echo/>
+    <echo>   buildall: This target will iterate through each subdirectory     </echo>
+    <echo>             and run the build scripts for each solution discovered.</echo>
+    <echo> releaseall: This target will iterate through each subdirectory     </echo>
+    <echo>             and build and release each solution.                   </echo>
+    <echo/>
+    <echo/>
+    <echo>Type `nant -buildfile:app.build -projecthelp' to list all defined targets."</echo>
+    <echo/>
+    <echo/>
+  </target>
+
+
+  <target name="list" description="Lists all of the solutions in this area.">
+
+    <echo/>
+    <echo>Solutions discovered:</echo>
+    <echo/>
+
+    <foreach item="Folder" in="${directory::get-current-directory()}" property="sln.root">
+
+      <property name="sln.name" value="${ep::substring-from-last-char(sln.root,'/')}" />
+      <property name="sln.file" value="${path::combine(sln.root, sln.name + '.sln')}" />
+
+      <if test="${file::exists(sln.file)}">
+        <echo/>
+        <echo>        Solution: ${sln.name}  </echo>
+        <echo>   Solution File: ${sln.file}</echo>
+        <echo/>
+      </if>
+
+    </foreach>
+  </target>
+
+
+  <target name="clean" description="Cleans all of the solutions in this area.">
+
+    <echo/>
+    <echo>Cleaning Solutions...</echo>
+    <echo/>
+
+    <foreach item="Folder" in="${directory::get-current-directory()}" property="sln.root">
+
+      <property name="sln.name" value="${ep::substring-from-last-char(sln.root,'/')}" />
+      <property name="sln.file" value="${path::combine(sln.root, sln.name + '.sln')}" />
+
+      <if test="${file::exists(sln.file)}">
+        <echo/>
+        <echo>        Solution: ${sln.name}  </echo>
+        <echo>   Solution File: ${sln.file}</echo>
+        <echo/>
+      </if>
+
+    </foreach>
+  </target>
+
+  <target name="build" description="Builds all of the solutions in this area.">
+
+    <property name="fail.on.error" value="false" overwrite="false" />
+
+    <echo/>
+    <echo>Building Solutions</echo>
+    <echo/>
+
+    <!-- manifest format: type, dll root-dir,name,subfolder  -->
+    <foreach item="Folder" in="${directory::get-current-directory()}" property="sln.root">
+
+      <property name="sln.name" value="${ep::substring-from-last-char(sln.root,'/')}" />
+      <property name="sln.file" value="${path::combine(sln.root, sln.name + '.sln')}" />
+
+      <if test="${file::exists(sln.file)}">
+
+        <echo/>
+        <echo/>
+        <echo/>
+        <echo/>
+        <echo/>
+        <echo/>
+        <echo/>
+        <echo>        Solution: ${sln.name}  </echo>
+        <echo>   Solution File: ${sln.file}</echo>
+        <echo/>
+        <echo>BUILDING  ${sln.name}</echo>
+
+        <call target="build-solution" />
+
+      </if>
+
+    </foreach>
+  </target>
+
+
+  <target name="release" description="Releases all of the solutions in this area.">
+
+    <property name="fail.on.error" value="false" overwrite="false" />
+
+    <echo/>
+    <echo>Building Solutions</echo>
+    <echo/>
+
+    <!-- manifest format: type, dll root-dir,name,subfolder  -->
+    <foreach item="Folder" in="${directory::get-current-directory()}" property="sln.root">
+
+      <property name="sln.name" value="${ep::substring-from-last-char(sln.root,'/')}" />
+      <property name="sln.file" value="${path::combine(sln.root, sln.name + '.sln')}" />
+
+      <if test="${not sln.name == 'dll' and not(sln.name == 'releases')}">
+
+        <echo/>
+        <echo/>
+        <echo/>
+        <echo/>
+        <echo/>
+        <echo/>
+        <echo/>
+        <echo>        Solution: ${sln.name}  </echo>
+        <echo>   Solution File: ${sln.file}</echo>
+
+        <echo/>
+        <echo>RELEASING  ${sln.name}</echo>
+        <call target="release-solution" />
+
+      </if>
+
+    </foreach>
+  </target>
+
+  <target name="build-solution" description=" [internal] Builds a given solution. The caller must set the property sln.name." >
+    <nant
+      buildfile="BuildScripts/app.build"
+      target="dist"
+      failonerror="${fail.on.error}" >
+      <properties>
+        <property name="sln.name" value="${sln.name}" />
+      </properties>
+    </nant>
+    <echo/>
+    <echo/>
+    <echo>DONE: BUILD-SOLUTION</echo>
+  </target>
+
+
+
+
+
+  <target name="release-solution" description=" [internal] Releases a given solution. The caller must set the property sln.name." >
+    <nant
+      buildfile="BuildScripts/app.build"
+      target="release"
+      failonerror="${fail.on.error}" >
+      <properties>
+        <property name="sln.name" value="${sln.name}" />
+      </properties>
+    </nant>
+    <echo/>
+    <echo/>
+    <echo>DONE: RELEASE-SOLUTION</echo>
+  </target>
+
+
+</project>

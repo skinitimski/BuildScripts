@@ -1,0 +1,4 @@
+
+  <PropertyGroup>
+    <PostBuildEvent>nant /f:$(SolutionDir)..\BuildScripts\app.build tag-build -D:sln.name=$(SolutionName)</PostBuildEvent>
+  </PropertyGroup>

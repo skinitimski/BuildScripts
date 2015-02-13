@@ -1,0 +1,83 @@
+<?xml version="1.0"?>
+<project name="Custom-build" basedir=".." default="help">
+
+ <!--
+ This NAnt script is designed to do the custom build operations
+ as defined by the EPXR team. The script has been written such that
+ it should work for any project. The only assumptions made are that
+ the trunk, branches, and tags directories (as they're named in the
+ properties file) all reside directly under the url given in proj.url,
+ and the major and minor version number properties are called
+ major.version and minor.version (and they're named in the
+ properties file).
+ -->
+ 
+
+ 
+    <!-- 
+		custom: performs a custom build activity.  
+        If the project supplies a custom.build file, it's "custom" target is invoked.
+	-->
+	<target name="custom" description=" [internal] Performs any project specific custom activity">
+    
+        <echo message="   Major version: ${major.version}"/>
+        <echo message="   Minor version: ${minor.version}"/>
+        <echo message="Tertiary version: ${tertiary.version}"/>
+        <echo message="   Build version: ${build.version}"/>
+   
+        <!-- 
+        loop through form files and compile
+        loop through ddf files and compile
+        loop through tag files and copy
+        -->
+        <if test="${file::exists(file.manifest)}" >
+            <foreach item="Line" in="${file.manifest}" delim="," property="exec,switch,file,prefix,ext">
+            
+                <property name="inputfile" value="SupportFiles\${file}" />
+                <property name="outputfile" value="SupportFiles\${prefix}_${major.version}_${minor.version}.${ext}" />
+                
+                <if test="${not string::starts-with(exec, '#') and file::exists(inputfile) }">
+                    <echo message="Command: ${exec} ${switch} ${inputfile} ${outputfile}"/>
+                    <exec program="${exec}">
+                        <arg line="${switch} ${inputfile} ${outputfile}"/>
+                        failonerror="true" 
+                    </exec>
+                </if>
+            </foreach>   
+        </if>
+        
+	</target>
+
+   <!--
+   prepare-patch-version: create a temp version file that has the minor version decremented
+   -->
+   <target name="prepare-patch-version" description=" [internal] Used by Ant for generating a temporary version.properties file in patching.">
+
+      <property name="temp.version.file" value="${proj.version.file}.temp" />
+      <echo>   proj.version.file : ${proj.version.file} </echo>
+      <echo>   temp.version.file : ${temp.version.file} </echo>
+
+      <!-- read in the (Java) properties file -->
+      <foreach item="Line" in="${proj.version.file}" delim="=" property="name,value">
+         <if test="${string::starts-with(string::trim-start(name),'#')}">
+            <echo file="${temp.version.file}" append="true">${name}</echo>
+         </if>
+         <if test="${not string::starts-with(string::trim-start(name),'#')}">
+            <if test="${string::starts-with(string::trim-start(name),'minor')}">
+               <echo file="${temp.version.file}" append="true">${name}=${int::parse(value) - 1}</echo>
+            </if>
+            <if test="${not string::starts-with(string::trim-start(name),'minor')}">
+               <if test="${string::starts-with(string::trim-start(name),'tertiary')}">
+                  <echo file="${temp.version.file}" append="true">${name}=${int::parse(value) + 1}</echo>
+               </if>
+               <if test="${not string::starts-with(string::trim-start(name),'tertiary')}">
+                  <echo file="${temp.version.file}" append="true">${name}=${value}</echo>
+               </if>
+            </if>
+         </if>
+      </foreach>
+      
+      
+   </target>
+
+</project>

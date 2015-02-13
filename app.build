@@ -1,0 +1,941 @@
+<?xml version="1.0"?>
+<project name="Build-Release" basedir=".." default="help">
+
+  <property name="sln.dir"             value="${path::combine('.', sln.name)}" />
+  <property name="sln.properties.file" value="${path::combine(sln.dir, sln.name + '.properties')}" overwrite="false" />
+  <property name="sln.version.file"    value="${path::combine(sln.dir, 'version.properties')}"     overwrite="false" />
+  <property name="sln.readme.file"     value="${path::combine(sln.dir, 'README.md')}"              overwrite="false" />
+  <property name="sln.archive.dir"     value="${path::combine(sln.dir, '.archive/')}"              overwrite="false" />
+  <property name="releases.dir"        value="${path::combine('.', 'releases')}"                   overwrite="false" />
+  <property name="build.devenv"        value="mdtool"                                              overwrite="false" />
+  <property name="build.configuration" value="Release"                                             overwrite="false" />
+  <property name="skip.tests"          value="false"                                               overwrite="false" />
+
+
+  <script language="C#">
+    <code>
+      <![CDATA[
+      public static void ScriptMain(Project project) {
+      project.Properties["build.year"] = DateTime.Now.Year.ToString();
+      }
+      ]]>
+    </code>
+  </script>
+
+  <script language="C#" prefix="timski" >
+    <code>
+      <![CDATA[
+      [Function("substring-from-last-char")]
+      public static string SubstringFromChar(string input, char ch)
+      {
+      // add 1 to skip the char itself
+      int index = input.LastIndexOf(ch) + 1;
+      if (index > 0)
+      return input.Substring(index, input.Length - index);
+      else
+      return null;
+      }
+      ]]>
+    </code>
+  </script>
+
+  <script language="C#" prefix="timski" >
+    <code>
+      <![CDATA[
+      [Function("substring-to-last-char")]
+      public static string SubstringToChar(string input, char ch)
+      {
+      //add 1 to skip the char itself
+      int index = input.LastIndexOf(ch);
+      if (index > 0)
+      return input.Substring(0, index);
+      else
+      return null;
+      }
+      ]]>
+    </code>
+  </script>
+
+  <script language="C#" prefix="timski" >
+    <code>
+      <![CDATA[
+      [Function("boolean-prompt")]
+      public static string BooleanPrompt(string message)
+      {
+      Console.WriteLine(message + " (y or n)");
+      string input = Console.ReadLine();
+      input.Trim();
+      if (input == "y" || input == "n" || input == "Y" || input == "N")
+      return input;
+      else
+      return BooleanPrompt(message + " (y or n)");
+      }
+      ]]>
+    </code>
+  </script>
+
+
+  <!--
+  init: Load external tasks
+  -->
+  <target 
+    name="init" 
+    description=" [internal] Loads nant property file and external tasks."
+    unless="${target::has-executed('init')}" >
+
+    <loadtasks assembly="BuildScripts/lib/XmlListTask.dll" />
+    <property name="sln.initialized" value="true" />
+  </target>
+
+
+
+  <!--
+  help: help screen
+  -->
+  <target name="help" description="Additional information about this script. Includes usage.">
+    <echo/>
+    <echo>Usage:</echo>
+    <echo/>
+    <echo> nant -buildfile:app.build help</echo>
+    <echo> nant -buildfile:app.build clean</echo>
+    <echo> nant -buildfile:app.build compile</echo>
+    <echo> nant -buildfile:app.build test</echo>
+    <echo> nant -buildfile:app.build dist</echo>
+    <echo> nant -buildfile:app.build zip</echo>
+    <echo> nant -buildfile:app.build tag-major</echo>
+    <echo> nant -buildfile:app.build tag-minor</echo>
+    <echo> nant -buildfile:app.build tag-tertiary</echo>
+    <echo> nant -buildfile:app.build tag-build</echo>
+    <echo/>
+    <echo>You must also specify the project name using '-D:sln.name={solution name}' after the target.</echo>
+    <echo/>
+    <echo/>
+    <echo>Relevant target descriptions:</echo>
+    <echo/>
+    <echo>   help:    Prints this usage dialogue.</echo>
+    <echo/>
+    <echo>  clean:   Cleans dist directory and IDE build directory.</echo>
+    <echo>   wipe:   Completely empties dist directory and IDE build directory.</echo>
+    <echo/>
+    <echo>   dist:   Compiles the solution.</echo>
+    <echo>   test:   Compiles and tests the solution.</echo>
+    <echo>   dist:   Compiles, tests, and creates a distribution of the solution.</echo>
+    <echo>    zip:   Runs dist then zips up what it spits out.</echo>
+    <echo>  tag-*:   Increments the * version of the solution.</echo>
+    <echo/>
+    <echo/>
+    <echo>Type `nant -buildfile:app.build -projecthelp' to list all defined targets."</echo>
+    <echo/>
+  </target>
+
+
+
+  <!--
+  validate
+     desc: validate/process properties files
+  depends: init
+    calls: readjavaprops
+  -->
+  <target 
+    name="validate" 
+    description=" [internal] Validates the setup and configuration of the solution."
+    depends="init"
+    unless="${target::has-executed('validate')}" >
+
+    <echo>Running validation on archive setup...</echo>
+
+    <fail message="Required property 'sln.name' not defined on command line." unless="${property::exists('sln.name')}" />
+    <fail message="Solution directory does not exist: ${sln.dir}"             unless="${directory::exists(sln.dir)}" />
+    <fail message="Readme file '${sln.readme.file}' not found."               unless="${file::exists(sln.readme.file)}" />
+    <fail message="Properties file '${sln.properties.file}' not found."       unless="${file::exists(sln.properties.file)}"/>
+
+
+
+    <!--
+    Read project properties file
+    -->
+    <property name="properties.file" value="${sln.properties.file}" />
+    <call target="readjavaprops" />
+    <echo>Validating '${properties.file}'...</echo>
+    <fail message="Required property 'sln.desc' not found in '${sln.properties.file}'."    unless="${property::exists('sln.desc')}"/>
+    <echo>Done.</echo>
+
+
+
+    <!--
+    Parse project version file
+    -->
+    <property name="properties.file" value="${sln.version.file}" />
+    <call target="readjavaprops" />
+    <echo>Validating '${properties.file}'...</echo>
+    <fail message="Required property 'major.version' not found in '${sln.version.file}'."    unless="${property::exists('major.version')}"/>
+    <fail message="Required property 'minor.version' not found in '${sln.version.file}'."    unless="${property::exists('minor.version')}"/>
+    <fail message="Required property 'tertiary.version' not found in '${sln.version.file}'." unless="${property::exists('tertiary.version')}"/>
+    <fail message="Required property 'build.version' not found in '${sln.version.file}'."    unless="${property::exists('build.version')}"/>
+    <echo>Done.</echo>
+
+
+    <echo />
+    <!--
+    Parse cs project file
+    -->        
+    <foreach item="Folder" in="${sln.dir}" property="proj.dir">
+
+      <property name="proj.dir.name"    value="${timski::substring-from-last-char(proj.dir, '/')}" />            
+      <property name="proj.csproj.file" value="${proj.dir}/${proj.dir.name}.csproj" />
+
+      <if test="${file::exists(proj.csproj.file)}">
+
+        <echo message="Project: ${proj.dir.name}" />
+
+        <xmllist
+          file="${proj.csproj.file}"
+          property="event.postbuild"
+          delim=","
+          xpath="/x:Project/x:PropertyGroup/x:PostBuildEvent">
+          <namespaces>
+            <namespace prefix="x" uri="http://schemas.microsoft.com/developer/msbuild/2003" />
+          </namespaces>
+        </xmllist>
+
+        <foreach item="String" property="event.postbuild.part" delim="," in="${event.postbuild}">
+          <echo>        event.postbuild: ${event.postbuild.part}         </echo>
+        </foreach>
+
+      </if>
+
+    </foreach>
+
+
+
+
+    <property name="sln.file"       value="${path::combine(sln.dir, sln.name + '.sln')}" />
+    <property name="sln.version"    value="${major.version}.${minor.version}.${tertiary.version}.${build.version}" />
+    <property name="sln.log.dir"    value="${path::combine(sln.dir, 'log')}" />
+    <property name="build.dist.dir" value="${sln.dir}/dist-${sln.version}"/>
+
+    <mkdir dir="${sln.log.dir}" />
+
+    <echo/>
+    <echo/>
+    <echo>Solution:</echo>
+    <echo/>
+    <echo>               sln.name: ${sln.name}            </echo>
+    <echo>               sln.desc: ${sln.desc}            </echo>
+    <echo>            sln.version: ${sln.version}         </echo>
+    <echo>            sln.log.dir: ${sln.log.dir}         </echo>
+    <echo>                sln.dir: ${sln.dir}             </echo>
+    <echo>               sln.file: ${sln.file}            </echo>
+    <echo/>
+    <echo>    build.configuration: ${build.configuration} </echo>
+    <echo>             build.year: ${build.year}          </echo>
+    <echo>         build.dist.dir: ${build.dist.dir}      </echo>
+    <echo/>
+    <echo>           releases.dir: ${releases.dir}        </echo>
+    <echo/>
+    <echo/>
+    <echo message="DONE: VALIDATE" />
+
+    <property name="sln.validated" value="true" />
+  </target>
+
+
+
+
+  <!--
+  readjavaprops: read properties.file
+  -->
+  <target name="readjavaprops" description=" [internal] Reads ant-style property files.">
+
+    <echo>Parsing '${properties.file}'...</echo>
+    <!-- requires that ${properties.file} is defined -->
+    <fail
+      message="properties.file must be defined to invoke this target"
+      unless="${property::exists('properties.file')}"
+      />
+
+    <!-- read in the (Java) properties file -->
+    <foreach item="Line" in="${properties.file}" delim="=" property="name,value">
+      <!-- skip comments -->
+      <if test="${not string::starts-with(string::trim-start(name),'#')}">
+        <!-- skip empty lines -->
+        <if test="${string::get-length(string::trim(name)) > 0}">
+          <property name="${name}" value="${value}" />
+        </if>
+      </if>
+    </foreach>
+
+  </target>
+
+
+
+  <!--
+  wipe     
+     desc: Completely empty intermediate/output/dist directories.
+  depends: validate
+    calls: clean
+  -->
+  <target name="wipe" depends="validate" description="Completely empties all build locations.">
+
+    <property name="clean.wipe" value="true" />
+
+    <call target="clean" />
+
+  </target>
+
+
+
+  <!--
+  clean
+     desc: Clean intermediate/output/dist directories.
+  depends: validate
+  -->
+  <target name="clean" depends="validate" description="Cleans all build locations.">
+
+    <echo/>
+    <echo/>
+
+    <echo>Cleaning log directory: ${sln.log.dir}</echo>
+    <delete includeemptydirs="true" verbose="true" failonerror="false">
+      <fileset basedir="${sln.log.dir}">
+        <include name="**/*" />
+      </fileset>
+    </delete>
+
+    <echo>Deleting old distribution directories...</echo>
+    <foreach item="Folder" in="${sln.dir}" property="foldername">
+      <property name="old.dist" value="${timski::substring-from-last-char(foldername, '/')}" />
+      <if test="${string::starts-with(old.dist, 'dist-')}">
+        <echo message="Deleting folder: ${foldername}" />
+        <delete dir="${foldername}" />
+      </if>
+    </foreach>
+    <echo>Done.</echo>
+    <echo/>
+    <echo/>
+
+    <foreach item="Folder" in="${sln.dir}" property="proj.dir">
+
+      <property name="proj.dir.name"    value="${timski::substring-from-last-char(proj.dir, '/')}" />            
+      <property name="proj.csproj.file" value="${proj.dir}/${proj.dir.name}.csproj" />
+
+      <if test="${file::exists(proj.csproj.file)}">
+
+        <xmllist
+          file="${proj.csproj.file}"
+          property="proj.name"
+          xpath="/x:Project/x:PropertyGroup/x:AssemblyName">
+          <namespaces>
+            <namespace prefix="x" uri="http://schemas.microsoft.com/developer/msbuild/2003" />
+          </namespaces>
+        </xmllist>
+
+        <xmllist
+          file="${proj.csproj.file}"
+          property="proj.type"
+          xpath="/x:Project/x:PropertyGroup/x:OutputType">
+          <namespaces>
+            <namespace prefix="x" uri="http://schemas.microsoft.com/developer/msbuild/2003" />
+          </namespaces>
+        </xmllist>
+
+        <echo>Cleaning sub-project: ${proj.name}</echo>
+
+        <property name="proj.int.dir" value="${proj.dir}/obj/${build.configuration}" />
+        <property name="proj.out.dir" value="${proj.dir}/bin/${build.configuration}" />
+
+        <property name="proj.target.name" value="${proj.name}.dll" if="${proj.type == 'Library'}" />
+        <property name="proj.target.name" value="${proj.name}.exe" if="${proj.type == 'Exe'}" />
+
+        <echo>Cleaning intermediate directory: ${proj.int.dir}</echo>
+        <delete includeemptydirs="true" verbose="true" failonerror="false">
+          <fileset basedir="${proj.int.dir}">
+            <include name="**/*" />
+          </fileset>
+        </delete>
+
+        <echo>Cleaning target directory: ${proj.out.dir}</echo>
+        <delete verbose="true" failonerror="false">
+          <fileset basedir="${proj.out.dir}">
+            <include name="${proj.target.name}" />
+            <include name="**/*" if="${property::exists('clean.wipe')}" />
+          </fileset>
+        </delete>
+
+        <echo>Done.</echo>
+        <echo/>
+        <echo/>
+
+      </if>
+
+    </foreach>
+
+    <echo>DONE: CLEAN</echo>
+
+  </target>
+
+
+
+
+
+
+
+
+
+
+
+
+  <!--
+  asminfo: builds AssemblyInfo.cs for each project.
+  -->
+  <target name="asminfo" description=" [internal] Builds AssemblyInfo.cs for each project in the solution.">
+
+    <echo>Building AssemblyInfo.cs property file for each project...</echo>
+
+    <foreach item="Folder" in="${sln.dir}" property="proj.dir">
+
+      <property name="proj.properties.file" value="${path::combine(proj.dir, 'project.properties')}" />
+
+      <if test="${file::exists(proj.properties.file)}">
+
+        <echo/>
+        <echo>   Project properties file: ${proj.properties.file}</echo>
+
+        <!--
+        Parse lib properties file  TODO: this will not validate after the first one since properties will have been set already
+        -->
+        <property name="properties.file" value="${proj.properties.file}" />
+        <call target="readjavaprops" />
+        <echo>Validating '${properties.file}'...</echo>
+        <fail message="Property 'proj.desc' not found in '${proj.properties.file}'."            unless="${property::exists('proj.desc')}"/>
+        <!--fail message="Property 'proj.strong.name.key' not found in '${proj.properties.file}'." unless="${property::exists('proj.strong.name.key')}"/-->
+
+        <property name="proj.name" value="${path::get-file-name(proj.dir)}" />
+        <property name="proj.asminfo.file" value="${path::combine(path::combine(proj.dir, 'Properties'), 'AssemblyInfo.cs')}" />
+
+        <echo/>
+        <echo>           proj.name: ${proj.name}</echo>
+        <echo>           proj.desc: ${proj.desc}</echo>
+        <echo>   proj.asminfo.file: ${proj.asminfo.file}</echo>
+        <if test="${property::exists('proj.strong.name.key')}">
+          <echo>proj.strong.name.key: ${proj.strong.name.key}</echo>
+        </if>
+        <echo/>
+        <echo/>
+
+        <!--
+        <fail message="File does not exist: '${proj.asminfo.file}'" unless="${file::exists(proj.asminfo.file)}" />
+        -->
+        <asminfo output="${proj.asminfo.file}" language="CSharp">
+          <imports>
+            <import namespace="System"/>
+            <import namespace="System.Reflection"/>
+            <import namespace="System.Runtime.CompilerServices"/>
+          </imports>
+          <attributes>
+            <attribute type="AssemblyTitleAttribute"         value="${proj.name}" />
+            <attribute type="AssemblyDescriptionAttribute"   value="${proj.desc}" />
+            <attribute type="AssemblyConfigurationAttribute" value="" />
+            <attribute type="AssemblyCompanyAttribute"       value="Midnight Computers" />
+            <attribute type="AssemblyProductAttribute"       value="${proj.desc}" />
+            <attribute type="AssemblyCopyrightAttribute"     value="Copyright (c) ${build.year}, Midnight Computers" />
+            <attribute type="AssemblyTrademarkAttribute"     value="" />
+            <attribute type="AssemblyCultureAttribute"       value="" />
+            <attribute type="AssemblyVersionAttribute"       value="${sln.version}" />
+            <attribute type="AssemblyDelaySignAttribute"     value="false"                  asis="false" />
+            <if test="${property::exists('proj.strong.name.key')}">
+              <attribute type="AssemblyKeyFileAttribute"       value="${proj.strong.name.key}" />
+            </if>
+            <attribute type="AssemblyKeyNameAttribute"       value="" />
+          </attributes>
+        </asminfo>
+      </if>
+    </foreach>
+
+    <echo/>
+    <echo/>
+    <echo>DONE: ASMINFO</echo>
+
+  </target>
+
+
+
+
+
+
+
+
+
+
+  <!--
+  compile: Compiles the application
+    calls: [asminfo], [rcinfo] 
+  -->
+  <target name="compile" depends="validate" description=" [internal] Compiles the application; runs assembly/resource info targets.">
+
+    <!--
+    Generate AssemblyInfo.cs for c# projects
+    -->
+    <call target="asminfo" />
+
+    <property name="build.log" value="${path::combine(sln.log.dir, 'devenv.log')}" />
+
+    <delete file="${build.log}" />
+
+    <property name="build.cmdline" value="build ${sln.file} -c:${build.configuration} -t:Build" />
+
+    <echo/>
+    <echo/>
+    <echo>  Dev Environment: ${build.devenv}</echo>
+    <echo>     Command Line: ${build.cmdline}</echo>
+    <echo/>
+    <echo>    Solution File: ${sln.file} </echo>
+    <echo>        ^^ Exists: ${file::exists(sln.file)}</echo>
+    <echo/>
+    <echo/>
+
+    <fail if="${not file::exists(sln.file)}" message="Solution file doesn't exist: '${sln.file}'" />
+
+    <exec
+      verbose="true"
+      program="${build.devenv}"
+      commandline="${build.cmdline}"
+      failonerror="false"
+      resultproperty="build.result"
+      />
+
+    <echo>     build.result: ${build.result}</echo>
+
+    <fail if="${int::parse(build.result) != 0}" message="The DEVENV compilation failed. Check ${build.log} for details." />
+
+    <call target="tag-build" failonerror="true" />
+
+    <echo/>
+    <echo/>
+    <echo>DONE: COMPILE</echo>
+
+  </target>
+
+
+
+  <!--
+  test
+     desc: Runs unit tests for the project (if available)
+  depends: compile 
+  -->
+  <target name="test" depends="compile" description="Runs unit tests for the project (if available)." unless="${skip.tests}">
+    <property name="nunit.file" value="${path::combine(sln.dir, sln.name + '.' + build.configuration + '.nunit')}"/>
+
+    <echo>     nunit.file: ${nunit.file}</echo>
+    <echo>      ^^ exists: ${file::exists(nunit.file)}</echo>
+
+    <if test="${file::exists(nunit.file)}">
+
+      <!-- <property name="nunit.log.out" value="${path::combine(sln.log.dir, 'TestResult.txt')}" /> -->
+      <!-- -out:${nunit.log.out} -->
+
+      <property name="nunit.log.xml" value="${path::combine(sln.log.dir, 'TestResult.xml')}" />
+
+      <property name="nunit.cmdline" value="${nunit.file} -labels -nodots -xml:${nunit.log.xml}"/>
+
+      <echo/>
+      <echo/>
+      <echo>     Command Line: ${nunit.cmdline}</echo>
+      <echo/>
+      <echo/>
+
+      <exec
+        verbose="true"
+        program="nunit-console"
+        commandline="${nunit.cmdline}"
+        failonerror="true" />
+
+    </if>
+
+  </target>
+
+
+
+  <!--
+  dist
+     desc: Build distribution for the application depends: test
+  depends: test
+  -->
+  <target name="dist" depends="test" description="Builds a distribution for the application." >
+
+    <!-- make directory for distribution -->
+    <mkdir dir="${build.dist.dir}" />
+
+
+    <foreach item="Folder" in="${sln.dir}" property="proj.dir">
+
+      <property name="proj.dir.name"    value="${timski::substring-from-last-char(proj.dir, '/')}" />            
+      <property name="proj.csproj.file" value="${proj.dir}/${proj.dir.name}.csproj" />
+
+      <if test="${file::exists(proj.csproj.file)}">
+
+        <xmllist
+          file="${proj.csproj.file}"
+          property="proj.name"
+          xpath="/x:Project/x:PropertyGroup/x:AssemblyName">
+          <namespaces>
+            <namespace prefix="x" uri="http://schemas.microsoft.com/developer/msbuild/2003" />
+          </namespaces>
+        </xmllist>
+
+        <xmllist
+          file="${proj.csproj.file}"
+          property="proj.type"
+          xpath="/x:Project/x:PropertyGroup/x:OutputType">
+          <namespaces>
+            <namespace prefix="x" uri="http://schemas.microsoft.com/developer/msbuild/2003" />
+          </namespaces>
+        </xmllist>
+
+        <property name="proj.out.dir" value="${proj.dir}/bin/${build.configuration}" />
+
+        <echo>   Copy files from: '${proj.out.dir}'</echo>
+
+        <property name="proj.target.name" value="${proj.name}.dll" if="${proj.type == 'Library'}" />
+        <property name="proj.target.name" value="${proj.name}.exe" if="${proj.type == 'Exe'}" />
+
+        <copy todir="${build.dist.dir}" flatten="true">
+          <fileset basedir="${proj.out.dir}">
+            <include name="**/*.exe" />
+            <include name="**/*.dll" />
+            <include name="**/*.exe.config" />
+            <exclude name="**/UnitTests.dll" />
+            <exclude name="**/nunit.framework.dll" />
+            <exclude name="**/*vshost.exe" />
+            <exclude name="**/*vshost.exe.config" />
+          </fileset>
+        </copy>
+
+        <echo>Done.</echo>
+        <echo/>
+        <echo/>
+
+      </if>
+
+    </foreach>
+
+
+    <!-- Copy other files -->
+    <foreach item="String" in="resources,docs,other" delim="," property="other.folder">
+      <if test="${directory::exists(other.folder)}">
+        <echo>${path::get-full-path(other.folder)}</echo>
+        <mkdir dir="${build.dist.dir}/${other.folder}" />
+        <copy todir="${build.dist.dir}/${other.folder}" flatten="false">
+          <fileset basedir="${other.folder}">
+            <include name="**/*" />
+          </fileset>
+        </copy>
+      </if>
+    </foreach>
+
+
+    <!-- copy the readme file -->
+    <copy
+      tofile="${build.dist.dir}/${path::get-file-name(sln.readme.file)}"
+      file="${sln.readme.file}"
+      overwrite="true" />
+
+
+    <!-- custom dist steps -->
+    <property name="dist.custom.build.file" value="${sln.dir}/custom-dist.build" />
+    <property name="dist.custom.build.exists" value="${file::exists(dist.custom.build.file)}" />
+
+    <nant
+      buildfile="${dist.custom.build.file}"
+      target="custom"
+      if="${file::exists(dist.custom.build.file)}"
+      />
+
+    <echo/>
+    <echo/>
+    <echo>DONE: DIST</echo>
+
+  </target>
+
+
+
+
+
+  <!--
+  zip
+     desc: zip up the distribution from dist 
+  depends: dist 
+  -->
+    <target name="zip" depends="dist" description="Builds a zipped distribution for the application.">
+
+      <property name="sln.zip.file" value="${path::combine(build.dist.dir, sln.name + '.zip')}" />
+
+      <zip zipfile="${sln.zip.file}" includeemptydirs="true" >
+        <fileset basedir="${build.dist.dir}">
+          <include name="**/*" />
+        </fileset>
+      </zip>
+
+      <delete includeemptydirs="true">
+        <fileset basedir="${build.dist.dir}" >
+          <include name="**/*" />
+          <exclude name="*.zip" />
+        </fileset>
+      </delete>
+
+      <echo/>
+      <echo/>
+      <echo>DONE: ZIP</echo>
+
+    </target>
+
+
+
+
+
+    <!--
+    archive
+       desc: Archives the project.
+    depends: clean
+    -->
+    <target name="archive" depends="clean" description=" [Internal] Archives the solution." >
+
+      <if test="${not directory::exists(sln.archive.dir)}">
+        <mkdir dir="${sln.archive.dir}" />  
+      </if>
+
+      <property name="sln.archive.file" value="${sln.archive.dir}/${sln.name}-${sln.version}.zip" />
+
+      <zip zipfile="${sln.archive.file}" includeemptydirs="true" >
+        <fileset basedir="${sln.dir}">
+          <include name="**" />
+          <exclude name="**/.archive/**" />
+        </fileset>
+      </zip>
+
+      <echo/>
+      <echo/>
+      <echo>DONE: ARCHIVE</echo>
+
+    </target>
+
+
+
+    <!--
+    release
+       desc: Releases the build artifacts of the solution (dll, exe, exe.config) to the configured directory.
+    depends: dist
+    -->
+    <target name="release" depends="dist" description=" [Internal] Releases the solution build artifacts." >
+
+      <copy todir="${releases.dir}" overwrite="true">
+        <fileset basedir="${build.dist.dir}" >
+          <include name="*.exe" />
+          <include name="*.exe.config" />
+          <include name="*.dll" />
+        </fileset>
+      </copy>
+
+      <!-- custom release steps --> 
+
+      <property name="release.custom.build.file" value="${sln.dir}/custom-release.build" />
+      <property name="release.custom.build.exists" value="${file::exists(release.custom.build.file)}" />
+
+      <nant
+        buildfile="${release.custom.build.file}"
+        target="custom"
+        if="${file::exists(release.custom.build.file)}"
+        />
+
+      <echo/>
+      <echo/>
+      <echo>DONE: RELEASE</echo>
+
+    </target>
+
+
+
+
+
+
+
+
+
+
+
+    <!--
+    tag-major
+         desc: Increments major version, resets minor/tertiary.
+      depends: validate
+    -->
+    <target name="tag-major" depends="validate" description="Increments major version, resets minor/tertiary.">
+
+      <property name="temp.version.file" value="${sln.version.file}.temp" />
+      <echo/>
+      <echo>Incrementing major.version property in ${sln.version.file}...</echo>
+      <echo/>
+
+      <!-- read in the (Java) properties file -->
+      <foreach item="Line" in="${sln.version.file}" delim="=" property="name,value">
+        <if test="${string::starts-with(string::trim-start(name),'#')}">
+          <echo file="${temp.version.file}" append="true">${name}${environment::newline()}</echo>
+        </if>
+        <if test="${not string::starts-with(string::trim-start(name),'#')}">
+          <if test="${string::starts-with(string::trim-start(name),'major')}">
+            <property name="major.version.old" value="${value}" />
+            <property name="major.version" value="${int::parse(value) + 1}" overwrite="true" />
+            <echo file="${temp.version.file}" append="true">${name}=${major.version}${environment::newline()}</echo>
+          </if>
+          <if test="${not string::starts-with(string::trim-start(name),'major')}">
+            <if test="${string::starts-with(string::trim-start(name),'build')}">
+              <echo file="${temp.version.file}" append="true">${name}=${build.version}${environment::newline()}</echo>
+            </if>
+            <if test="${not string::starts-with(string::trim-start(name),'build')}">
+              <echo file="${temp.version.file}" append="true">${name}=0${environment::newline()}</echo>
+            </if>
+          </if>
+        </if>
+      </foreach>
+
+      <echo>   Major version is now '${major.version}'</echo>
+      <echo>   Moving ${temp.version.file} to ${sln.version.file}...</echo>
+      <move file="${temp.version.file}" tofile="${sln.version.file}" overwrite="true"/>
+      <echo/>
+      <echo/>
+      <echo>DONE: TAG-MAJOR</echo>
+
+      <call target="archive" />
+
+    </target>
+
+
+
+
+
+
+    <!--
+    tag-minor
+         desc: Increments minor version, resets tertiary.
+      depends: validate
+    -->
+    <target name="tag-minor" depends="validate" description="Increments minor version, resets tertiary.">
+
+      <property name="temp.version.file" value="${sln.version.file}.temp" />
+      <echo/>
+      <echo>Incrementing minor.version property in ${sln.version.file}...</echo>
+      <echo/>
+
+      <!-- read in the (Java) properties file -->
+      <foreach item="Line" in="${sln.version.file}" delim="=" property="name,value">
+        <if test="${string::starts-with(string::trim-start(name),'#')}">
+          <echo file="${temp.version.file}" append="true">${name}${environment::newline()}</echo>
+        </if>
+        <if test="${not string::starts-with(string::trim-start(name),'#')}">
+          <if test="${string::starts-with(string::trim-start(name),'minor')}">
+            <property name="minor.version.old" value="${value}" />
+            <property name="minor.version" value="${int::parse(value) + 1}" overwrite="true" />
+            <echo file="${temp.version.file}" append="true">${name}=${minor.version}${environment::newline()}</echo>
+          </if>
+          <if test="${not string::starts-with(string::trim-start(name),'minor')}">
+            <if test="${string::starts-with(string::trim-start(name),'tertiary')}">
+              <property name="tertiary.version.old" value="${value}" />
+              <property name="tertiary.version" value="0" overwrite="true" />
+              <echo file="${temp.version.file}" append="true">${name}=${tertiary.version}${environment::newline()}</echo>
+            </if>
+            <if test="${not string::starts-with(string::trim-start(name),'tertiary')}">
+              <echo file="${temp.version.file}" append="true">${name}=${value}${environment::newline()}</echo>
+            </if>
+          </if>
+        </if>
+      </foreach>
+
+      <echo>   Tertiary version is now '${tertiary.version}'</echo>
+      <echo>   Moving ${temp.version.file} to ${sln.version.file}...</echo>
+      <move file="${temp.version.file}" tofile="${sln.version.file}" overwrite="true"/>
+      <echo/>
+      <echo/>
+      <echo>DONE: TAG-MINOR</echo>
+
+      <call target="archive" />
+
+    </target>
+
+    <!--
+    tag-tertiary
+         desc: Increments tertiary version.
+         depends: validate
+    -->
+    <target name="tag-tertiary" depends="validate" description="Increments tertiary version.">
+
+      <property name="temp.version.file" value="${sln.version.file}.temp" />
+      <echo/>
+      <echo>Incrementing tertiary.version property in ${sln.version.file}...</echo>
+      <echo/>
+
+      <!-- read in the (Java) properties file -->
+      <foreach item="Line" in="${sln.version.file}" delim="=" property="name,value">
+        <if test="${string::starts-with(string::trim-start(name),'#')}">
+          <echo file="${temp.version.file}" append="true">${name}${environment::newline()}</echo>
+        </if>
+        <if test="${not string::starts-with(string::trim-start(name),'#')}">
+          <if test="${string::starts-with(string::trim-start(name),'tertiary')}">
+            <property name="tertiary.version.old" value="${value}" />
+            <property name="tertiary.version" value="${int::parse(value) + 1}" overwrite="true" />
+            <echo file="${temp.version.file}" append="true">${name}=${tertiary.version}${environment::newline()}</echo>
+          </if>
+          <if test="${not string::starts-with(string::trim-start(name),'tertiary')}">
+            <echo file="${temp.version.file}" append="true">${name}=${value}${environment::newline()}</echo>
+          </if>
+        </if>
+      </foreach>
+
+      <echo>   Tertiary version is now '${tertiary.version}'</echo>
+      <echo>   Moving ${temp.version.file} to ${sln.version.file}...</echo>
+      <move file="${temp.version.file}" tofile="${sln.version.file}" overwrite="true"/>
+      <echo/>
+      <echo/>
+      <echo>DONE: TAG-TERTIARY</echo>
+
+      <call target="archive" />
+
+    </target>
+
+    <!--
+    tag-build
+         desc: Increments build version.
+      depends: validate
+    -->
+    <target name="tag-build" depends="validate" description="Increments build version.">
+
+      <property name="temp.version.file" value="${sln.version.file}.temp" />
+      <echo/>
+      <echo>Incrementing build.version property in ${sln.version.file}...</echo>
+      <echo/>
+
+      <!-- read in the (Java) properties file -->
+      <foreach item="Line" in="${sln.version.file}" delim="=" property="name,value">
+        <if test="${string::starts-with(string::trim-start(name),'#')}">
+          <echo file="${temp.version.file}" append="true">${name}${environment::newline()}</echo>
+        </if>
+        <if test="${not string::starts-with(string::trim-start(name),'#')}">
+          <if test="${string::starts-with(string::trim-start(name),'build')}">
+            <property name="build.version.old" value="${value}" />
+            <property name="build.version" value="${int::parse(value) + 1}" overwrite="true" />
+            <echo file="${temp.version.file}" append="true">${name}=${build.version}${environment::newline()}</echo>
+          </if>
+          <if test="${not string::starts-with(string::trim-start(name),'build')}">
+            <echo file="${temp.version.file}" append="true">${name}=${value}${environment::newline()}</echo>
+          </if>
+        </if>
+      </foreach>
+
+      <echo>   Build version is now '${build.version}'</echo>
+      <echo>   Moving ${temp.version.file} to ${sln.version.file}...</echo>
+      <move file="${temp.version.file}" tofile="${sln.version.file}" overwrite="true"/>
+      <echo/>
+      <echo/>
+      <echo>DONE: TAG-BUILD</echo>
+
+    </target>
+
+</project>
