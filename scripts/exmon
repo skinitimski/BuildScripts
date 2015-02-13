@@ -1,0 +1,34 @@
+#!/bin/sh
+
+if [ -z "$MONO_RELEASES_DIR" ]
+then
+  MONO_RELEASES_DIR=/vol/mono/releases
+fi
+
+PROC=`basename $BASH_SOURCE`
+
+usage()
+{
+  echo "$PROC <assembly_name> [arguments]"
+}
+
+
+if [ "$1" == "" ]
+then
+  usage 
+  exit 1
+fi
+
+ASSEMBLY=$1.exe
+shift
+ASSEMBLY_PATH=$MONO_RELEASES_DIR/$ASSEMBLY
+
+if [ ! -f $ASSEMBLY_PATH ]
+then
+  echo "Assembly doesn't exist: $ASSEMBLY_PATH"
+  exit 2
+fi
+
+
+mono $ASSEMBLY_PATH "$@"
+
