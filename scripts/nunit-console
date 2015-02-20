@@ -1,0 +1,4 @@
+#!/bin/sh
+
+exec mono --debug /opt/nunit/bin/nunit-console.exe "$@"
+
