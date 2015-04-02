@@ -9,7 +9,7 @@
   <property name="releases.dir"        value="${path::combine('.', 'releases')}"                   overwrite="false" />
   <property name="build.devenv"        value="mdtool"                                              overwrite="false" />
   <property name="build.configuration" value="Release"                                             overwrite="false" />
-  <property name="skip.tests"          value="false"                                               overwrite="false" />
+  <property name="test.skip"           value="false"                                               overwrite="false" />
 
 
   <script language="C#">
@@ -523,7 +523,7 @@
      desc: Runs unit tests for the project (if available)
   depends: compile 
   -->
-  <target name="test" depends="compile" description="Runs unit tests for the project (if available)." unless="${skip.tests}">
+  <target name="test" depends="compile" description="Runs unit tests for the project (if available)." unless="${test.skip}">
     <property name="nunit.file" value="${path::combine(sln.dir, sln.name + '.' + build.configuration + '.nunit')}"/>
 
     <echo>     nunit.file: ${nunit.file}</echo>
