@@ -7,7 +7,7 @@
   <property name="sln.readme.file"     value="${path::combine(sln.dir, 'README.md')}"              overwrite="false" />
   <property name="sln.archive.dir"     value="${path::combine(sln.dir, '.archive/')}"              overwrite="false" />
   <property name="releases.dir"        value="${path::combine('.', 'releases')}"                   overwrite="false" />
-  <property name="build.devenv"        value="mdtool"                                              overwrite="false" />
+  <property name="build.devenv"        value="xbuild"                                              overwrite="false" />
   <property name="build.configuration" value="Release"                                             overwrite="false" />
   <property name="build.year"          value="${datetime::get-year(datetime::now())}"              overwrite="false" />
   <property name="test.skip"           value="false"                                               overwrite="false" />
@@ -487,7 +487,7 @@
 
     <delete file="${build.log}" />
 
-    <property name="build.cmdline" value="build ${sln.file} -c:${build.configuration} -t:Build" />
+    <property name="build.cmdline" value="/t:build /property:Configuration=${build.configuration} ${sln.file}" />
 
     <echo/>
     <echo/>
