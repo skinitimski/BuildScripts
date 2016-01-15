@@ -9,9 +9,12 @@
   <property name="releases.dir"        value="${path::combine('.', 'releases')}"                   overwrite="false" />
   <property name="build.devenv"        value="mdtool"                                              overwrite="false" />
   <property name="build.configuration" value="Release"                                             overwrite="false" />
+  <property name="build.year"          value="${datetime::get-year(datetime::now())}"              overwrite="false" />
   <property name="test.skip"           value="false"                                               overwrite="false" />
 
 
+
+  <!--
   <script language="C#">
     <code>
       <![CDATA[
@@ -73,6 +76,7 @@
       ]]>
     </code>
   </script>
+  -->
 
 
   <!--
@@ -183,7 +187,7 @@
     -->        
     <foreach item="Folder" in="${sln.dir}" property="proj.dir">
 
-      <property name="proj.dir.name"    value="${timski::substring-from-last-char(proj.dir, '/')}" />            
+      <property name="proj.dir.name"    value="${string::substring(proj.dir, string::last-index-of(proj.dir, '/') + 1, string::get-length(proj.dir) - string::last-index-of(proj.dir, '/') - 1)}" />
       <property name="proj.csproj.file" value="${proj.dir}/${proj.dir.name}.csproj" />
 
       <if test="${file::exists(proj.csproj.file)}">
@@ -305,7 +309,7 @@
 
     <echo>Deleting old distribution directories...</echo>
     <foreach item="Folder" in="${sln.dir}" property="foldername">
-      <property name="old.dist" value="${timski::substring-from-last-char(foldername, '/')}" />
+      <property name="old.dist"    value="${string::substring(foldername, string::last-index-of(foldername, '/') + 1, string::get-length(foldername) - string::last-index-of(foldername, '/') - 1)}" />
       <if test="${string::starts-with(old.dist, 'dist-')}">
         <echo message="Deleting folder: ${foldername}" />
         <delete dir="${foldername}" />
@@ -317,7 +321,7 @@
 
     <foreach item="Folder" in="${sln.dir}" property="proj.dir">
 
-      <property name="proj.dir.name"    value="${timski::substring-from-last-char(proj.dir, '/')}" />            
+      <property name="proj.dir.name"    value="${string::substring(proj.dir, string::last-index-of(proj.dir, '/') + 1, string::get-length(proj.dir) - string::last-index-of(proj.dir, '/') - 1)}" />
       <property name="proj.csproj.file" value="${proj.dir}/${proj.dir.name}.csproj" />
 
       <if test="${file::exists(proj.csproj.file)}">
@@ -568,7 +572,7 @@
 
     <foreach item="Folder" in="${sln.dir}" property="proj.dir">
 
-      <property name="proj.dir.name"    value="${timski::substring-from-last-char(proj.dir, '/')}" />            
+      <property name="proj.dir.name"    value="${string::substring(proj.dir, string::last-index-of(proj.dir, '/') + 1, string::get-length(proj.dir) - string::last-index-of(proj.dir, '/') - 1)}" />
       <property name="proj.csproj.file" value="${proj.dir}/${proj.dir.name}.csproj" />
 
       <if test="${file::exists(proj.csproj.file)}">
