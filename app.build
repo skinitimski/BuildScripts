@@ -102,10 +102,6 @@
     <echo> nant -buildfile:app.build test</echo>
     <echo> nant -buildfile:app.build dist</echo>
     <echo> nant -buildfile:app.build zip</echo>
-    <echo> nant -buildfile:app.build tag-major</echo>
-    <echo> nant -buildfile:app.build tag-minor</echo>
-    <echo> nant -buildfile:app.build tag-tertiary</echo>
-    <echo> nant -buildfile:app.build tag-build</echo>
     <echo/>
     <echo>You must also specify the project name using '-D:sln.name={solution name}' after the target.</echo>
     <echo/>
@@ -121,7 +117,6 @@
     <echo>   test:   Compiles and tests the solution.</echo>
     <echo>   dist:   Compiles, tests, and creates a distribution of the solution.</echo>
     <echo>    zip:   Runs dist then zips up what it spits out.</echo>
-    <echo>  tag-*:   Increments the * version of the solution.</echo>
     <echo/>
     <echo/>
     <echo>Type `nant -buildfile:app.build -projecthelp' to list all defined targets."</echo>
@@ -168,10 +163,17 @@
     <property name="properties.file" value="${sln.version.file}" />
     <call target="readjavaprops" />
     <echo>Validating '${properties.file}'...</echo>
-    <fail message="Required property 'major.version' not found in '${sln.version.file}'."    unless="${property::exists('major.version')}"/>
-    <fail message="Required property 'minor.version' not found in '${sln.version.file}'."    unless="${property::exists('minor.version')}"/>
-    <fail message="Required property 'tertiary.version' not found in '${sln.version.file}'." unless="${property::exists('tertiary.version')}"/>
-    <fail message="Required property 'build.version' not found in '${sln.version.file}'."    unless="${property::exists('build.version')}"/>
+
+    <fail unless="${property::exists('sln.version')}" message="Required property 'sln.version' not set." />
+
+    <!-- try to match the supplied version against the semver regex, and parse out the root/prerelease parts -->
+    <regex pattern="^(?'versioncheck'(?'versionpart'\d+\.\d+\.\d+)-?(?'prereleasepart'[0-9a-zA-Z\-]+)?)$" input="${sln.version}" failonerror="false" />
+
+    <fail unless="${property::exists('versioncheck')}" message="Supplied value of sln.version (${sln.version}) does not match semvar format." />
+
+    <property name="build.flag.prerelease" value="${string::get-length(prereleasepart) > 0}" />
+    <property name="proj.assemblyinfo.version" value="${versionpart}" />
+
     <echo>Done.</echo>
 
 
@@ -210,7 +212,6 @@
 
 
     <property name="sln.file"       value="${path::combine(sln.dir, sln.name + '.sln')}" />
-    <property name="sln.version"    value="${major.version}.${minor.version}.${tertiary.version}.${build.version}" />
     <property name="sln.log.dir"    value="${path::combine(sln.dir, 'log')}" />
     <property name="build.dist.dir" value="${sln.dir}/dist-${sln.version}"/>
 
@@ -441,7 +442,7 @@
             <attribute type="AssemblyCopyrightAttribute"     value="Copyright (c) ${build.year}, Midnight Computers" />
             <attribute type="AssemblyTrademarkAttribute"     value="" />
             <attribute type="AssemblyCultureAttribute"       value="" />
-            <attribute type="AssemblyVersionAttribute"       value="${sln.version}" />
+            <attribute type="AssemblyVersionAttribute"       value="$proj.assemblyinfo.version}" />
             <attribute type="AssemblyDelaySignAttribute"     value="false"                  asis="false" />
             <if test="${property::exists('proj.strong.name.key')}">
               <attribute type="AssemblyKeyFileAttribute"       value="${proj.strong.name.key}" />
@@ -507,8 +508,6 @@
     <echo>     build.result: ${build.result}</echo>
 
     <fail if="${int::parse(build.result) != 0}" message="The DEVENV compilation failed. Check ${build.log} for details." />
-
-    <call target="tag-build" failonerror="true" />
 
     <echo/>
     <echo/>
@@ -750,191 +749,6 @@
       <echo/>
       <echo/>
       <echo>DONE: RELEASE</echo>
-
-    </target>
-
-
-
-
-
-
-
-
-
-
-
-    <!--
-    tag-major
-         desc: Increments major version, resets minor/tertiary.
-      depends: validate
-    -->
-    <target name="tag-major" depends="validate" description="Increments major version, resets minor/tertiary.">
-
-      <property name="temp.version.file" value="${sln.version.file}.temp" />
-      <echo/>
-      <echo>Incrementing major.version property in ${sln.version.file}...</echo>
-      <echo/>
-
-      <!-- read in the (Java) properties file -->
-      <foreach item="Line" in="${sln.version.file}" delim="=" property="name,value">
-        <if test="${string::starts-with(string::trim-start(name),'#')}">
-          <echo file="${temp.version.file}" append="true">${name}${environment::newline()}</echo>
-        </if>
-        <if test="${not string::starts-with(string::trim-start(name),'#')}">
-          <if test="${string::starts-with(string::trim-start(name),'major')}">
-            <property name="major.version.old" value="${value}" />
-            <property name="major.version" value="${int::parse(value) + 1}" overwrite="true" />
-            <echo file="${temp.version.file}" append="true">${name}=${major.version}${environment::newline()}</echo>
-          </if>
-          <if test="${not string::starts-with(string::trim-start(name),'major')}">
-            <if test="${string::starts-with(string::trim-start(name),'build')}">
-              <echo file="${temp.version.file}" append="true">${name}=${build.version}${environment::newline()}</echo>
-            </if>
-            <if test="${not string::starts-with(string::trim-start(name),'build')}">
-              <echo file="${temp.version.file}" append="true">${name}=0${environment::newline()}</echo>
-            </if>
-          </if>
-        </if>
-      </foreach>
-
-      <echo>   Major version is now '${major.version}'</echo>
-      <echo>   Moving ${temp.version.file} to ${sln.version.file}...</echo>
-      <move file="${temp.version.file}" tofile="${sln.version.file}" overwrite="true"/>
-      <echo/>
-      <echo/>
-      <echo>DONE: TAG-MAJOR</echo>
-
-      <call target="archive" />
-
-    </target>
-
-
-
-
-
-
-    <!--
-    tag-minor
-         desc: Increments minor version, resets tertiary.
-      depends: validate
-    -->
-    <target name="tag-minor" depends="validate" description="Increments minor version, resets tertiary.">
-
-      <property name="temp.version.file" value="${sln.version.file}.temp" />
-      <echo/>
-      <echo>Incrementing minor.version property in ${sln.version.file}...</echo>
-      <echo/>
-
-      <!-- read in the (Java) properties file -->
-      <foreach item="Line" in="${sln.version.file}" delim="=" property="name,value">
-        <if test="${string::starts-with(string::trim-start(name),'#')}">
-          <echo file="${temp.version.file}" append="true">${name}${environment::newline()}</echo>
-        </if>
-        <if test="${not string::starts-with(string::trim-start(name),'#')}">
-          <if test="${string::starts-with(string::trim-start(name),'minor')}">
-            <property name="minor.version.old" value="${value}" />
-            <property name="minor.version" value="${int::parse(value) + 1}" overwrite="true" />
-            <echo file="${temp.version.file}" append="true">${name}=${minor.version}${environment::newline()}</echo>
-          </if>
-          <if test="${not string::starts-with(string::trim-start(name),'minor')}">
-            <if test="${string::starts-with(string::trim-start(name),'tertiary')}">
-              <property name="tertiary.version.old" value="${value}" />
-              <property name="tertiary.version" value="0" overwrite="true" />
-              <echo file="${temp.version.file}" append="true">${name}=${tertiary.version}${environment::newline()}</echo>
-            </if>
-            <if test="${not string::starts-with(string::trim-start(name),'tertiary')}">
-              <echo file="${temp.version.file}" append="true">${name}=${value}${environment::newline()}</echo>
-            </if>
-          </if>
-        </if>
-      </foreach>
-
-      <echo>   Tertiary version is now '${tertiary.version}'</echo>
-      <echo>   Moving ${temp.version.file} to ${sln.version.file}...</echo>
-      <move file="${temp.version.file}" tofile="${sln.version.file}" overwrite="true"/>
-      <echo/>
-      <echo/>
-      <echo>DONE: TAG-MINOR</echo>
-
-      <call target="archive" />
-
-    </target>
-
-    <!--
-    tag-tertiary
-         desc: Increments tertiary version.
-         depends: validate
-    -->
-    <target name="tag-tertiary" depends="validate" description="Increments tertiary version.">
-
-      <property name="temp.version.file" value="${sln.version.file}.temp" />
-      <echo/>
-      <echo>Incrementing tertiary.version property in ${sln.version.file}...</echo>
-      <echo/>
-
-      <!-- read in the (Java) properties file -->
-      <foreach item="Line" in="${sln.version.file}" delim="=" property="name,value">
-        <if test="${string::starts-with(string::trim-start(name),'#')}">
-          <echo file="${temp.version.file}" append="true">${name}${environment::newline()}</echo>
-        </if>
-        <if test="${not string::starts-with(string::trim-start(name),'#')}">
-          <if test="${string::starts-with(string::trim-start(name),'tertiary')}">
-            <property name="tertiary.version.old" value="${value}" />
-            <property name="tertiary.version" value="${int::parse(value) + 1}" overwrite="true" />
-            <echo file="${temp.version.file}" append="true">${name}=${tertiary.version}${environment::newline()}</echo>
-          </if>
-          <if test="${not string::starts-with(string::trim-start(name),'tertiary')}">
-            <echo file="${temp.version.file}" append="true">${name}=${value}${environment::newline()}</echo>
-          </if>
-        </if>
-      </foreach>
-
-      <echo>   Tertiary version is now '${tertiary.version}'</echo>
-      <echo>   Moving ${temp.version.file} to ${sln.version.file}...</echo>
-      <move file="${temp.version.file}" tofile="${sln.version.file}" overwrite="true"/>
-      <echo/>
-      <echo/>
-      <echo>DONE: TAG-TERTIARY</echo>
-
-      <call target="archive" />
-
-    </target>
-
-    <!--
-    tag-build
-         desc: Increments build version.
-      depends: validate
-    -->
-    <target name="tag-build" depends="validate" description="Increments build version.">
-
-      <property name="temp.version.file" value="${sln.version.file}.temp" />
-      <echo/>
-      <echo>Incrementing build.version property in ${sln.version.file}...</echo>
-      <echo/>
-
-      <!-- read in the (Java) properties file -->
-      <foreach item="Line" in="${sln.version.file}" delim="=" property="name,value">
-        <if test="${string::starts-with(string::trim-start(name),'#')}">
-          <echo file="${temp.version.file}" append="true">${name}${environment::newline()}</echo>
-        </if>
-        <if test="${not string::starts-with(string::trim-start(name),'#')}">
-          <if test="${string::starts-with(string::trim-start(name),'build')}">
-            <property name="build.version.old" value="${value}" />
-            <property name="build.version" value="${int::parse(value) + 1}" overwrite="true" />
-            <echo file="${temp.version.file}" append="true">${name}=${build.version}${environment::newline()}</echo>
-          </if>
-          <if test="${not string::starts-with(string::trim-start(name),'build')}">
-            <echo file="${temp.version.file}" append="true">${name}=${value}${environment::newline()}</echo>
-          </if>
-        </if>
-      </foreach>
-
-      <echo>   Build version is now '${build.version}'</echo>
-      <echo>   Moving ${temp.version.file} to ${sln.version.file}...</echo>
-      <move file="${temp.version.file}" tofile="${sln.version.file}" overwrite="true"/>
-      <echo/>
-      <echo/>
-      <echo>DONE: TAG-BUILD</echo>
 
     </target>
 
